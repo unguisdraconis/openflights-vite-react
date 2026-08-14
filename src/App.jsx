@@ -1110,7 +1110,7 @@ function App() {
   return html` <div className="app">
     <header className="topbar">
       <button
-        className="icon-btn"
+        className="icon-btn mobile-menu-btn"
         onClick=${() => setMenuOpen((v) => !v)}
         aria-label="Toggle controls"
         aria-expanded=${menuOpen}

@@ -163,6 +163,16 @@ h1 {
   place-items: center;
   font-size: 17px;
 }
+
+.mobile-menu-btn {
+  display: none;
+}
+
+@media (max-width: 680px) {
+  .mobile-menu-btn {
+    display: grid;
+  }
+}
 .main {
   min-height: 0;
   display: grid;
