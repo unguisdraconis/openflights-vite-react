@@ -87,6 +87,7 @@ canvas:focus-visible {
   padding: 12px 18px;
   border-bottom: 1px solid var(--border);
   background: rgba(11, 13, 18, 0.82);
+  -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
   z-index: 20;
 }
@@ -184,6 +185,7 @@ h1 {
   padding: 16px;
   border-right: 1px solid var(--border);
   background: rgba(16, 18, 24, 0.88);
+  -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
   scrollbar-width: thin;
 }
@@ -372,6 +374,49 @@ kbd {
   color: var(--text-h);
   font: 10px var(--mono);
 }
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.footer-help {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+.social-links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.social-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 11px;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    color 0.15s;
+}
+.social-btn:hover {
+  border-color: var(--accent-border);
+  background: rgba(86, 180, 233, 0.08);
+  color: var(--text-h);
+}
+.social-btn svg {
+  flex-shrink: 0;
+}
 .stage {
   position: relative;
   min-width: 0;
@@ -402,6 +447,7 @@ kbd {
   border: 1px solid var(--border);
   border-radius: 999px;
   background: rgba(17, 19, 26, 0.78);
+  -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
   color: var(--muted);
   font: 10px var(--mono);
@@ -415,7 +461,7 @@ kbd {
   box-shadow: 0 0 10px rgba(0, 158, 115, 0.8);
 }
 .tooltip {
-  position: absolute;
+  position: fixed;
   z-index: 15;
   width: min(295px, calc(100% - 24px));
   padding: 12px;
@@ -423,6 +469,7 @@ kbd {
   border-radius: 12px;
   background: rgba(23, 25, 33, 0.96);
   box-shadow: var(--shadow);
+  -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
   pointer-events: none;
 }

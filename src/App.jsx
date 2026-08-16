@@ -232,6 +232,32 @@ function Stat({ value, label }) {
   </div>`;
 }
 
+function LinkedInIcon() {
+  return html`<svg
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+  >
+    <path
+      d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.32 1.39v-1.2h-2.5v8.37h2.5v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.5M6.88 8.56a1.68 1.68 0 1 1 0-3.36 1.68 1.68 0 0 1 0 3.36m-1.2 10.12h2.5V9.9h-2.5v8.78z"
+    />
+  </svg>`;
+}
+
+function GitHubIcon() {
+  return html`<svg
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+  >
+    <path
+      d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.868-.013-1.703-2.782.603-3.369-1.343-3.369-1.343-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.891 1.529 2.341 1.544 2.914 1.182.092-.92.349-1.544.636-1.9-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.139 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"
+    />
+  </svg>`;
+}
+
 function LoadScreen({ onLoaded, loading, error }) {
   const inputRef = useRef();
   const processFiles = async (files) => {
@@ -289,7 +315,13 @@ function LoadScreen({ onLoaded, loading, error }) {
 
 function Tooltip({ node, pinned, point }) {
   if (!node || !point) return null;
-  const left = Math.min(point.x + 18, innerWidth - 320);
+  const tooltipWidth = 295;
+  const offsetX = 18;
+  const rightPosition = point.x + offsetX;
+  const fitsRight = rightPosition + tooltipWidth <= innerWidth;
+  const left = fitsRight
+    ? rightPosition
+    : Math.max(0, point.x - tooltipWidth - offsetX);
   const top = Math.max(12, Math.min(point.y - 20, innerHeight - 190));
   return html` <div
     className=${`tooltip ${pinned ? "pinned" : ""}`}
@@ -516,6 +548,30 @@ function Sidebar({
       <kbd>/</kbd> Search &nbsp; <kbd>Esc</kbd> Clear selection &nbsp;
       <kbd>R</kbd> Reset camera
     </section>
+
+    <footer className="sidebar-footer">
+      <div className="social-links">
+        <a
+          href="https://www.linkedin.com/in/jeremiahjking/"
+          className="social-btn"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="LinkedIn"
+        >
+          <${LinkedInIcon} />
+        </a>
+        <a
+          href="https://github.com/unguisdraconis"
+          className="social-btn"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="GitHub"
+        >
+          <${GitHubIcon} />
+        </a>
+      </div>
+      <p class="data-source">© 2026 Jeremiah King</p>
+    </footer>
   </aside>`;
 }
 
