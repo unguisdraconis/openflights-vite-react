@@ -126,7 +126,7 @@ h1 {
 .stat-label {
   margin-top: 4px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -285,7 +285,7 @@ h1 {
 }
 .selected-chip span {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   margin-top: 2px;
 }
 .clear-btn {
@@ -362,7 +362,12 @@ select {
 }
 .help {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.data-source {
+  color: var(--muted);
+  font-size: 11px;
   line-height: 1.55;
 }
 kbd {
@@ -372,7 +377,7 @@ kbd {
   padding: 1px 5px;
   background: var(--bg-elevated);
   color: var(--text-h);
-  font: 10px var(--mono);
+  font: 11px var(--mono);
 }
 .sidebar-footer {
   display: flex;
@@ -384,12 +389,12 @@ kbd {
 }
 .footer-help {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.55;
 }
 .social-links {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
 .social-btn {
@@ -496,7 +501,7 @@ kbd {
 .tooltip-sub {
   margin-top: 3px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 .tooltip-grid {
   display: grid;

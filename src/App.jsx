@@ -1,11 +1,4 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { html } from "htm/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as d3 from "d3";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -162,6 +155,38 @@ function slerpArc(a, b, t, altitude) {
   return p.multiplyScalar(1.012 + Math.sin(Math.PI * t) * altitude);
 }
 
+// Shared color/size rule for a node, used both by the bulk point-sprite
+// buffer and by the single "hero" mesh so the two stay visually consistent.
+function nodeStyle(n, selectedNode) {
+  const isSelected = n === selectedNode;
+  const connected = !!(selectedNode && selectedNode.neighbors.has(n.numericId));
+  const color = isSelected
+    ? COLORS.orange
+    : connected
+      ? COLORS.purple
+      : n.degree > 45
+        ? COLORS.orange
+        : n.degree > 15
+          ? COLORS.sky
+          : COLORS.white;
+  const pixelSize =
+    (4.2 + Math.min(8, Math.sqrt(n.degree) * 0.72)) *
+    (isSelected ? 1.65 : connected ? 1.2 : 1);
+  return { color, pixelSize, isSelected, connected };
+}
+
+// The point-sprite shader gets a node's on-screen size "for free" by scaling
+// gl_PointSize with 1/-viewZ. A real mesh has no such trick — its apparent
+// size depends on world-space radius and camera distance — so this inverts
+// the perspective-projection math to pick a radius that reads at roughly the
+// same pixel size the sprite would have used, at a given reference distance.
+function pixelSizeToWorldRadius(pixelSize, camera, viewportHeightPx, distance) {
+  const vFov = THREE.MathUtils.degToRad(camera.fov);
+  const worldHeightAtDist = 2 * Math.tan(vFov / 2) * distance;
+  const pxPerWorldUnit = viewportHeightPx / worldHeightAtDist;
+  return pixelSize / (2 * pxPerWorldUnit);
+}
+
 function useGraphLayout(data, onReady) {
   useEffect(() => {
     if (!data) return;
@@ -226,36 +251,28 @@ function useGraphLayout(data, onReady) {
 }
 
 function Stat({ value, label }) {
-  return html`<div className="stat">
-    <div className="stat-value">${value}</div>
-    <div className="stat-label">${label}</div>
-  </div>`;
+  return (
+    <div className="stat">
+      <div className="stat-value">{value}</div>
+      <div className="stat-label">{label}</div>
+    </div>
+  );
 }
 
 function LinkedInIcon() {
-  return html`<svg
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="currentColor"
-  >
-    <path
-      d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.32 1.39v-1.2h-2.5v8.37h2.5v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.5M6.88 8.56a1.68 1.68 0 1 1 0-3.36 1.68 1.68 0 0 1 0 3.36m-1.2 10.12h2.5V9.9h-2.5v8.78z"
-    />
-  </svg>`;
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.32 1.39v-1.2h-2.5v8.37h2.5v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.5M6.88 8.56a1.68 1.68 0 1 1 0-3.36 1.68 1.68 0 0 1 0 3.36m-1.2 10.12h2.5V9.9h-2.5v8.78z" />
+    </svg>
+  );
 }
 
 function GitHubIcon() {
-  return html`<svg
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="currentColor"
-  >
-    <path
-      d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.868-.013-1.703-2.782.603-3.369-1.343-3.369-1.343-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.891 1.529 2.341 1.544 2.914 1.182.092-.92.349-1.544.636-1.9-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.139 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"
-    />
-  </svg>`;
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.868-.013-1.703-2.782.603-3.369-1.343-3.369-1.343-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.891 1.529 2.341 1.544 2.914 1.182.092-.92.349-1.544.636-1.9-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.139 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z" />
+    </svg>
+  );
 }
 
 function LoadScreen({ onLoaded, loading, error }) {
@@ -268,49 +285,56 @@ function LoadScreen({ onLoaded, loading, error }) {
       return onLoaded(null, null, "Select both airports.dat and routes.dat.");
     onLoaded(await airports.text(), await routes.text());
   };
-  return html` <div
-    className="load-screen"
-    onDragOver=${(e) => e.preventDefault()}
-    onDrop=${(e) => {
-      e.preventDefault();
-      processFiles(e.dataTransfer.files);
-    }}
-  >
-    <div className="load-card">
-      <div className="eyebrow">OpenFlights data loader</div>
-      <h2>Load the global aviation network</h2>
-      <p>
-        The dashboard first looks for <b>airports.dat</b> and
-        <b>routes.dat</b> beside this HTML file. If your browser blocks local
-        file requests, select or drop both supplied files here.
-      </p>
-      <div className="drop-zone">
-        <div>
-          <button
-            className="primary-btn"
-            onClick=${() => inputRef.current.click()}
-            disabled=${loading}
-          >
-            ${loading ? "Building network…" : "Choose both data files"}
-          </button>
-          <input
-            ref=${inputRef}
-            className="sr-only"
-            type="file"
-            multiple
-            accept=".txt,.dat,text/plain"
-            onChange=${(e) => processFiles(e.target.files)}
-          />
-          <div className="file-note">
-            You can also drag and drop both files onto this panel.
+  return (
+    <div
+      className="load-screen"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => {
+        e.preventDefault();
+        processFiles(e.dataTransfer.files);
+      }}
+    >
+      <div className="load-card">
+        <div className="eyebrow">OpenFlights data loader</div>
+        <h2>Load the global aviation network</h2>
+        <p>
+          The dashboard first looks for <b>airports.dat</b> and{" "}
+          <b>routes.dat</b> beside this HTML file. If your browser blocks local
+          file requests, select or drop both supplied files here.
+        </p>
+        <div className="drop-zone">
+          <div>
+            <button
+              className="primary-btn"
+              onClick={() => inputRef.current.click()}
+              disabled={loading}
+            >
+              {loading ? "Building network…" : "Choose both data files"}
+            </button>
+            <input
+              ref={inputRef}
+              className="sr-only"
+              type="file"
+              multiple
+              accept=".txt,.dat,text/plain"
+              onChange={(e) => processFiles(e.target.files)}
+            />
+            <div className="file-note">
+              You can also drag and drop both files onto this panel.
+            </div>
           </div>
         </div>
+        {loading && (
+          <div className="loading-bar" aria-label="Loading data"></div>
+        )}
+        {error && (
+          <div className="error" role="alert">
+            {error}
+          </div>
+        )}
       </div>
-      ${loading &&
-      html`<div className="loading-bar" aria-label="Loading data"></div>`}
-      ${error && html`<div className="error" role="alert">${error}</div>`}
     </div>
-  </div>`;
+  );
 }
 
 function Tooltip({ node, pinned, point }) {
@@ -323,37 +347,45 @@ function Tooltip({ node, pinned, point }) {
     ? rightPosition
     : Math.max(0, point.x - tooltipWidth - offsetX);
   const top = Math.max(12, Math.min(point.y - 20, innerHeight - 190));
-  return html` <div
-    className=${`tooltip ${pinned ? "pinned" : ""}`}
-    style=${{ left, top }}
-    role=${pinned ? "dialog" : "status"}
-    aria-label=${`${node.name} airport details`}
-  >
-    <div className="tooltip-top">
-      <div className="airport-code">${node.iata || node.icao || "—"}</div>
-      <div>
-        <h2>${node.name}</h2>
-        <div className="tooltip-sub">${node.city}, ${node.country}</div>
+  return (
+    <div
+      className={`tooltip ${pinned ? "pinned" : ""}`}
+      style={{ left, top }}
+      role={pinned ? "dialog" : "status"}
+      aria-label={`${node.name} airport details`}
+    >
+      <div className="tooltip-top">
+        <div className="airport-code">{node.iata || node.icao || "—"}</div>
+        <div>
+          <h2>{node.name}</h2>
+          <div className="tooltip-sub">
+            {node.city}, {node.country}
+          </div>
+        </div>
+      </div>
+      <div className="tooltip-grid">
+        <div className="tooltip-metric">
+          <b>{fmt.format(node.degree)}</b>
+          <span>Connections</span>
+        </div>
+        <div className="tooltip-metric">
+          <b>{fmt.format(node.routeCount)}</b>
+          <span>Route records</span>
+        </div>
+        <div className="tooltip-metric">
+          <b>
+            {node.lat.toFixed(1)}°, {node.lon.toFixed(1)}°
+          </b>
+          <span>Coordinates</span>
+        </div>
+      </div>
+      <div className="tooltip-note">
+        {pinned
+          ? "Pinned — click empty space or press Escape to close."
+          : "Click to pin this airport."}
       </div>
     </div>
-    <div className="tooltip-grid">
-      <div className="tooltip-metric">
-        <b>${fmt.format(node.degree)}</b><span>Connections</span>
-      </div>
-      <div className="tooltip-metric">
-        <b>${fmt.format(node.routeCount)}</b><span>Route records</span>
-      </div>
-      <div className="tooltip-metric">
-        <b>${node.lat.toFixed(1)}°, ${node.lon.toFixed(1)}°</b
-        ><span>Coordinates</span>
-      </div>
-    </div>
-    <div className="tooltip-note">
-      ${pinned
-        ? "Pinned — click empty space or press Escape to close."
-        : "Click to pin this airport."}
-    </div>
-  </div>`;
+  );
 }
 
 function Sidebar({
@@ -377,202 +409,227 @@ function Sidebar({
       .sort((a, b) => b.degree - a.degree)
       .slice(0, 8);
   }, [data, query]);
-  return html` <aside
-    id="controls"
-    className=${`sidebar ${open ? "open" : ""}`}
-    aria-label="Network controls"
-  >
-    <section className="section">
-      <div className="section-title">
-        <span>Find an airport</span
-        ><span className="value-pill">${fmt.format(data.nodes.length)}</span>
-      </div>
-      <div className="search-wrap">
-        <input
-          id="airport-search"
-          className="search"
-          value=${query}
-          onInput=${(e) => setQuery(e.target.value)}
-          placeholder="Code, city, airport…"
-          aria-label="Search airports"
-          autocomplete="off"
-        />
-        <span className="search-icon">⌕</span>
-      </div>
-      ${results.length > 0 &&
-      html`<div className="results" role="listbox">
-        ${results.map(
-          (n) =>
-            html` <button
-              key=${n.id}
-              className="result-btn"
-              role="option"
-              onClick=${() => {
-                selectNode(n);
-                setQuery("");
-              }}
-            >
-              <span className="result-name">${n.name}</span
-              ><span className="result-code">${n.iata || n.icao}</span>
-            </button>`,
+  return (
+    <aside
+      id="controls"
+      className={`sidebar ${open ? "open" : ""}`}
+      aria-label="Network controls"
+    >
+      <section className="section">
+        <div className="section-title">
+          <span>Find an airport</span>
+          <span className="value-pill">{fmt.format(data.nodes.length)}</span>
+        </div>
+        <div className="search-wrap">
+          <input
+            id="airport-search"
+            className="search"
+            value={query}
+            onInput={(e) => setQuery(e.target.value)}
+            placeholder="Code, city, airport…"
+            aria-label="Search airports"
+            autoComplete="off"
+          />
+          <span className="search-icon">⌕</span>
+        </div>
+        {results.length > 0 && (
+          <div className="results" role="listbox">
+            {results.map((n) => (
+              <button
+                key={n.id}
+                className="result-btn"
+                role="option"
+                onClick={() => {
+                  selectNode(n);
+                  setQuery("");
+                }}
+              >
+                <span className="result-name">{n.name}</span>
+                <span className="result-code">{n.iata || n.icao}</span>
+              </button>
+            ))}
+          </div>
         )}
-      </div>`}
-      ${selected &&
-      html`<div className="selected-chip">
-        <div>
-          <strong>${selected.name}</strong
-          ><span>${selected.city}, ${selected.country}</span>
-        </div>
-        <button
-          className="clear-btn"
-          onClick=${clearSelection}
-          aria-label="Clear selected airport"
-        >
-          ×
-        </button>
-      </div>`}
-    </section>
+        {selected && (
+          <div className="selected-chip">
+            <div>
+              <strong>{selected.name}</strong>
+              <span>
+                {selected.city}, {selected.country}
+              </span>
+            </div>
+            <button
+              className="clear-btn"
+              onClick={clearSelection}
+              aria-label="Clear selected airport"
+            >
+              ×
+            </button>
+          </div>
+        )}
+      </section>
 
-    <section className="section">
-      <div className="section-title"><span>View</span></div>
-      <div className="segmented" role="group" aria-label="Visualization mode">
-        <button
-          className=${`seg-btn ${options.view === "globe" ? "active" : ""}`}
-          aria-pressed=${options.view === "globe"}
-          onClick=${() => setOptions((o) => ({ ...o, view: "globe" }))}
-        >
-          3D globe
-        </button>
-        <button
-          className=${`seg-btn ${options.view === "topology" ? "active" : ""}`}
-          aria-pressed=${options.view === "topology"}
-          onClick=${() => setOptions((o) => ({ ...o, view: "topology" }))}
-        >
-          Topology
-        </button>
-      </div>
-      <label className="check-row"
-        ><input
-          type="checkbox"
-          checked=${options.autoRotate}
-          onChange=${(e) =>
-            setOptions((o) => ({ ...o, autoRotate: e.target.checked }))}
-        />Auto-rotate globe</label
-      >
-    </section>
+      <section className="section">
+        <div className="section-title">
+          <span>View</span>
+        </div>
+        <div className="segmented" role="group" aria-label="Visualization mode">
+          <button
+            className={`seg-btn ${options.view === "globe" ? "active" : ""}`}
+            aria-pressed={options.view === "globe"}
+            onClick={() => setOptions((o) => ({ ...o, view: "globe" }))}
+          >
+            3D globe
+          </button>
+          <button
+            className={`seg-btn ${options.view === "topology" ? "active" : ""}`}
+            aria-pressed={options.view === "topology"}
+            onClick={() => setOptions((o) => ({ ...o, view: "topology" }))}
+          >
+            Topology
+          </button>
+        </div>
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={options.autoRotate}
+            onChange={(e) =>
+              setOptions((o) => ({ ...o, autoRotate: e.target.checked }))
+            }
+          />
+          Auto-rotate globe
+        </label>
+      </section>
 
-    <section className="section">
-      <div className="section-title">
-        <span>Route filters</span
-        ><span className="value-pill">${options.density}%</span>
-      </div>
-      <div className="control-row">
-        <div className="control-label">
-          <span>Route density</span><span>${options.density}%</span>
+      <section className="section">
+        <div className="section-title">
+          <span>Route filters</span>
+          <span className="value-pill">{options.density}%</span>
         </div>
-        <input
-          type="range"
-          min="5"
-          max="100"
-          step="5"
-          value=${options.density}
-          onInput=${(e) =>
-            setOptions((o) => ({ ...o, density: +e.target.value }))}
-        />
-      </div>
-      <div className="control-row">
-        <div className="control-label">
-          <span>Minimum hub degree</span><span>${options.minDegree}</span>
+        <div className="control-row">
+          <div className="control-label">
+            <span>Route density</span>
+            <span>{options.density}%</span>
+          </div>
+          <input
+            type="range"
+            min="5"
+            max="100"
+            step="5"
+            value={options.density}
+            aria-label="Route density: adjust from 5% to 100%"
+            onInput={(e) =>
+              setOptions((o) => ({ ...o, density: +e.target.value }))
+            }
+          />
         </div>
-        <input
-          type="range"
-          min="0"
-          max="80"
-          step="1"
-          value=${options.minDegree}
-          onInput=${(e) =>
-            setOptions((o) => ({ ...o, minDegree: +e.target.value }))}
-        />
-      </div>
-      <div className="control-row">
-        <label className="control-label" htmlFor="scope"
-          ><span>Route scope</span></label
-        ><select
-          id="scope"
-          value=${options.scope}
-          onChange=${(e) =>
-            setOptions((o) => ({ ...o, scope: e.target.value }))}
-        >
-          <option value="all">All routes</option>
-          <option value="international">International only</option>
-          <option value="domestic">Domestic only</option>
-        </select>
-      </div>
-      <div className="control-row">
-        <label className="control-label" htmlFor="country"
-          ><span>Country focus</span></label
-        ><select
-          id="country"
-          value=${options.country}
-          onChange=${(e) =>
-            setOptions((o) => ({ ...o, country: e.target.value }))}
-        >
-          <option value="">All countries</option>
-          ${data.countries.map(
-            ([c, n]) => html`<option key=${c} value=${c}>${c} (${n})</option>`,
-          )}
-        </select>
-      </div>
-    </section>
+        <div className="control-row">
+          <div className="control-label">
+            <span>Minimum hub degree</span>
+            <span>{options.minDegree}</span>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="80"
+            step="1"
+            value={options.minDegree}
+            aria-label="Minimum hub degree: adjust from 0 to 80 connections"
+            onInput={(e) =>
+              setOptions((o) => ({ ...o, minDegree: +e.target.value }))
+            }
+          />
+        </div>
+        <div className="control-row">
+          <label className="control-label" htmlFor="scope">
+            <span>Route scope</span>
+          </label>
+          <select
+            id="scope"
+            value={options.scope}
+            onChange={(e) =>
+              setOptions((o) => ({ ...o, scope: e.target.value }))
+            }
+          >
+            <option value="all">All routes</option>
+            <option value="international">International only</option>
+            <option value="domestic">Domestic only</option>
+          </select>
+        </div>
+        <div className="control-row">
+          <label className="control-label" htmlFor="country">
+            <span>Country focus</span>
+          </label>
+          <select
+            id="country"
+            value={options.country}
+            onChange={(e) =>
+              setOptions((o) => ({ ...o, country: e.target.value }))
+            }
+          >
+            <option value="">All countries</option>
+            {data.countries.map(([c, n]) => (
+              <option key={c} value={c}>
+                {c} ({n})
+              </option>
+            ))}
+          </select>
+        </div>
+      </section>
 
-    <section className="section">
-      <div className="section-title"><span>Legend</span></div>
-      <div className="legend">
-        <div className="legend-row">
-          <span className="swatch" style=${{ background: "#56b4e9" }}></span
-          ><span>International connection</span>
+      <section className="section">
+        <div className="section-title">
+          <span>Legend</span>
         </div>
-        <div className="legend-row">
-          <span className="swatch" style=${{ background: "#009e73" }}></span
-          ><span>Domestic connection</span>
+        <div className="legend">
+          <div className="legend-row">
+            <span className="swatch" style={{ background: "#56b4e9" }}></span>
+            <span>International connection</span>
+          </div>
+          <div className="legend-row">
+            <span className="swatch" style={{ background: "#009e73" }}></span>
+            <span>Domestic connection</span>
+          </div>
+          <div className="legend-row">
+            <span className="swatch" style={{ background: "#e69f00" }}></span>
+            <span>Selected-airport connection</span>
+          </div>
         </div>
-        <div className="legend-row">
-          <span className="swatch" style=${{ background: "#e69f00" }}></span
-          ><span>Selected-airport connection</span>
-        </div>
-      </div>
-    </section>
+      </section>
 
-    <section className="section help">
-      Drag to orbit · scroll to zoom · click an airport to pin.<br /><br />
-      <kbd>/</kbd> Search &nbsp; <kbd>Esc</kbd> Clear selection &nbsp;
-      <kbd>R</kbd> Reset camera
-    </section>
+      <section className="section help">
+        Drag to orbit · scroll to zoom · click an airport to pin.
+        <br />
+        <br />
+        <kbd>/</kbd> Search &nbsp; <kbd>Esc</kbd> Clear selection &nbsp;
+        <kbd>R</kbd> Reset camera
+      </section>
 
-    <footer className="sidebar-footer">
-      <div className="social-links">
-        <a
-          href="https://www.linkedin.com/in/jeremiahjking/"
-          className="social-btn"
-          target="_blank"
-          rel="noreferrer"
-          aria-label="LinkedIn"
-        >
-          <${LinkedInIcon} />
-        </a>
-        <a
-          href="https://github.com/unguisdraconis"
-          className="social-btn"
-          target="_blank"
-          rel="noreferrer"
-          aria-label="GitHub"
-        >
-          <${GitHubIcon} />
-        </a>
-      </div>
-      <p class="data-source">© 2026 Jeremiah King</p>
-    </footer>
-  </aside>`;
+      <footer className="sidebar-footer">
+        <div className="social-links">
+          <a
+            href="https://www.linkedin.com/in/jeremiahjking/"
+            className="social-btn"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="LinkedIn"
+          >
+            <LinkedInIcon />
+          </a>
+          <a
+            href="https://github.com/unguisdraconis"
+            className="social-btn"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="GitHub"
+          >
+            <GitHubIcon />
+          </a>
+        </div>
+        <p className="data-source">© 2026 Jeremiah King</p>
+      </footer>
+    </aside>
+  );
 }
 
 function GlobeScene({
@@ -727,6 +784,51 @@ function GlobeScene({
     const nodePoints = new THREE.Points(nodesGeo, nodesMat);
     scene.add(nodePoints);
 
+    // The selected node (or, absent a selection, the highest-degree hub)
+    // renders as a real lit sphere instead of a point sprite. It's one
+    // extra draw call, so the cost is negligible, but it buys real geometry,
+    // lighting off the existing scene lights, and correct depth occlusion
+    // for the single node that most deserves the emphasis.
+    const topHubNode = data.nodes.reduce(
+      (best, n) => (n.degree > best.degree ? n : best),
+      data.nodes[0],
+    );
+    const heroGeo = new THREE.SphereGeometry(1, 24, 16);
+    const heroMat = new THREE.MeshStandardMaterial({
+      roughness: 0.32,
+      metalness: 0.2,
+    });
+    const heroMesh = new THREE.Mesh(heroGeo, heroMat);
+    heroMesh.visible = false;
+    scene.add(heroMesh);
+    let heroPixelSize = 0,
+      heroDistance = 3.55;
+    const updateHero = (opts, selectedNode, heroNode) => {
+      if (!heroNode) {
+        heroMesh.visible = false;
+        return;
+      }
+      const { color, pixelSize } = nodeStyle(heroNode, selectedNode);
+      const pos =
+        opts.view === "globe"
+          ? heroNode.geo
+          : heroNode.topology || heroNode.geo;
+      heroMesh.position.copy(pos);
+      heroMat.color.copy(color);
+      heroMat.emissive.copy(color).multiplyScalar(0.32);
+      heroPixelSize = pixelSize;
+      heroDistance = opts.view === "globe" ? 3.55 : 4.2;
+      heroMesh.scale.setScalar(
+        pixelSizeToWorldRadius(
+          heroPixelSize,
+          camera,
+          host.clientHeight || 800,
+          heroDistance,
+        ),
+      );
+      heroMesh.visible = true;
+    };
+
     let linksObj = null,
       visibleNodeIndices = data.nodes.map((_, i) => i),
       currentView = "globe";
@@ -817,7 +919,7 @@ function GlobeScene({
       linksObj.renderOrder = 1;
       scene.add(linksObj);
     };
-    const updateNodes = (opts, selectedNode) => {
+    const updateNodes = (opts, selectedNode, heroNode) => {
       currentView = opts.view;
       visibleNodeIndices = [];
       data.nodes.forEach((n, i) => {
@@ -825,18 +927,10 @@ function GlobeScene({
         nodePositions.set(v.toArray(), i * 3);
         const passesCountry = !opts.country || n.country === opts.country;
         const passesDegree = n.degree >= opts.minDegree;
-        const isSelected = n === selectedNode;
-        const connected =
-          selectedNode && selectedNode.neighbors.has(n.numericId);
-        let c = isSelected
-          ? COLORS.orange
-          : connected
-            ? COLORS.purple
-            : n.degree > 45
-              ? COLORS.orange
-              : n.degree > 15
-                ? COLORS.sky
-                : COLORS.white;
+        const { color, pixelSize, isSelected, connected } = nodeStyle(
+          n,
+          selectedNode,
+        );
         let alpha = isSelected
           ? 1
           : passesCountry && passesDegree
@@ -844,12 +938,15 @@ function GlobeScene({
             : connected
               ? 0.75
               : 0.075;
-        nodeColors.set(c.toArray(), i * 3);
+        const isHero = n === heroNode;
+        if (isHero) alpha = 0; // hero node is drawn as a mesh, not a sprite
+        nodeColors.set(color.toArray(), i * 3);
         nodeAlpha[i] = alpha;
-        nodeSizes[i] =
-          (4.2 + Math.min(8, Math.sqrt(n.degree) * 0.72)) *
-          (isSelected ? 1.65 : connected ? 1.2 : 1);
-        if (alpha > 0.18) visibleNodeIndices.push(i);
+        nodeSizes[i] = pixelSize;
+        // keep the hero node pickable via the quadtree even though its
+        // sprite is hidden — its position in the shared buffer is still
+        // updated above, so hover/click resolve to the same airport.
+        if (alpha > 0.18 || isHero) visibleNodeIndices.push(i);
       });
       nodesGeo.attributes.position.needsUpdate = true;
       nodesGeo.attributes.color.needsUpdate = true;
@@ -985,7 +1082,9 @@ function GlobeScene({
     const update = (opts, selectedNode) => {
       controls.autoRotate =
         opts.autoRotate && !reducedMotion && opts.view === "globe";
-      updateNodes(opts, selectedNode);
+      const heroNode = selectedNode || topHubNode;
+      updateNodes(opts, selectedNode, heroNode);
+      updateHero(opts, selectedNode, heroNode);
       makeLinks(opts, selectedNode);
       projectionDirty = true;
     };
@@ -999,6 +1098,10 @@ function GlobeScene({
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h, false);
+      if (heroMesh.visible)
+        heroMesh.scale.setScalar(
+          pixelSizeToWorldRadius(heroPixelSize, camera, h, heroDistance),
+        );
       projectionDirty = true;
     };
     const ro = new ResizeObserver(resize);
@@ -1060,7 +1163,7 @@ function GlobeScene({
   useEffect(() => {
     if (focusRequest?.node) apiRef.current?.focusNode(focusRequest.node);
   }, [focusRequest]);
-  return html`<div ref=${hostRef} className="canvas-host"></div>`;
+  return <div ref={hostRef} className="canvas-host"></div>;
 }
 
 function App() {
@@ -1163,105 +1266,96 @@ function App() {
         : 0,
     [data, options.scope, options.country, options.minDegree],
   );
-  return html` <div className="app">
-    <header className="topbar">
-      <button
-        className="icon-btn mobile-menu-btn"
-        onClick=${() => setMenuOpen((v) => !v)}
-        aria-label="Toggle controls"
-        aria-expanded=${menuOpen}
-      >
-        ☰
-      </button>
-      <div className="brand">
-        <div className="eyebrow">Global aviation intelligence</div>
-        <h1>OpenFlights Network</h1>
-      </div>
-      ${data &&
-      html`<div className="stats" aria-label="Network summary">
-        <${Stat}
-          value=${fmt.format(data.nodes.length)}
-          label="Airports"
-        /><${Stat}
-          value=${fmt.format(data.links.length)}
-          label="Connections"
-        /><${Stat}
-          value=${fmt.format(filteredCount)}
-          label="Visible pool"
-        /><${Stat}
-          value=${fmt.format(data.countries.length)}
-          label="Countries"
-        />
-      </div>`}
-      <div className="top-actions">
+  return (
+    <div className="app">
+      <header className="topbar">
         <button
-          className="icon-btn desktop-only"
-          onClick=${() =>
-            setOptions((o) => ({ ...o, autoRotate: !o.autoRotate }))}
-          aria-label="Toggle automatic rotation"
-          aria-pressed=${options.autoRotate}
+          className="icon-btn mobile-menu-btn"
+          onClick={() => setMenuOpen((v) => !v)}
+          aria-label="Toggle controls"
+          aria-expanded={menuOpen}
         >
-          ◌
+          ☰
         </button>
-      </div>
-    </header>
-    <main className="main">
-      ${data &&
-      html`<${Sidebar}
-        data=${data}
-        options=${options}
-        setOptions=${setOptions}
-        query=${query}
-        setQuery=${setQuery}
-        selected=${selected}
-        selectNode=${selectNode}
-        clearSelection=${clearSelection}
-        open=${menuOpen}
-      />`}
-      <section className="stage" aria-label="3D flight visualization">
-        ${data &&
-        html`<${GlobeScene}
-          data=${data}
-          options=${options}
-          selected=${selected}
-          topologyVersion=${topologyVersion}
-          focusRequest=${focusRequest}
-          onHover=${(n, p) => {
-            setHover(n);
-            setTipPoint(p);
-          }}
-          onSelect=${selectNode}
-          onClear=${clearSelection}
-        />`}
-        ${data &&
-        html`<div className="stage-badge">
-          <span className="dot"></span
-          ><span
-            >${options.view === "globe"
-              ? "GEOGRAPHIC GLOBE"
-              : "FORCE-DIRECTED TOPOLOGY"}
-            · ${options.density}% ROUTES</span
-          >
-        </div>`}
-        <${Tooltip}
-          node=${tooltipNode}
-          pinned=${!!selected}
-          point=${tipPoint}
-        />
-        ${!data &&
-        html`<${LoadScreen}
-          onLoaded=${load}
-          loading=${loading}
-          error=${error}
-        />`}
-        <div className="sr-only" aria-live="polite">
-          ${tooltipNode
-            ? `${tooltipNode.name}, ${tooltipNode.city}, ${tooltipNode.country}. ${tooltipNode.degree} direct connections.`
-            : ""}
+        <div className="brand">
+          <div className="eyebrow">Global aviation intelligence</div>
+          <h1>OpenFlights Network</h1>
         </div>
-      </section>
-    </main>
-  </div>`;
+        {data && (
+          <div className="stats" aria-label="Network summary">
+            <Stat value={fmt.format(data.nodes.length)} label="Airports" />
+            <Stat value={fmt.format(data.links.length)} label="Connections" />
+            <Stat value={fmt.format(filteredCount)} label="Visible pool" />
+            <Stat value={fmt.format(data.countries.length)} label="Countries" />
+          </div>
+        )}
+        <div className="top-actions">
+          <button
+            className="icon-btn desktop-only"
+            onClick={() =>
+              setOptions((o) => ({ ...o, autoRotate: !o.autoRotate }))
+            }
+            aria-label="Toggle automatic rotation"
+            aria-pressed={options.autoRotate}
+          >
+            ◌
+          </button>
+        </div>
+      </header>
+      <main className="main">
+        {data && (
+          <Sidebar
+            data={data}
+            options={options}
+            setOptions={setOptions}
+            query={query}
+            setQuery={setQuery}
+            selected={selected}
+            selectNode={selectNode}
+            clearSelection={clearSelection}
+            open={menuOpen}
+          />
+        )}
+        <section className="stage" aria-label="3D flight visualization">
+          {data && (
+            <GlobeScene
+              data={data}
+              options={options}
+              selected={selected}
+              topologyVersion={topologyVersion}
+              focusRequest={focusRequest}
+              onHover={(n, p) => {
+                setHover(n);
+                setTipPoint(p);
+              }}
+              onSelect={selectNode}
+              onClear={clearSelection}
+            />
+          )}
+          {data && (
+            <div className="stage-badge">
+              <span className="dot"></span>
+              <span>
+                {options.view === "globe"
+                  ? "GEOGRAPHIC GLOBE"
+                  : "FORCE-DIRECTED TOPOLOGY"}{" "}
+                · {options.density}% ROUTES
+              </span>
+            </div>
+          )}
+          <Tooltip node={tooltipNode} pinned={!!selected} point={tipPoint} />
+          {!data && (
+            <LoadScreen onLoaded={load} loading={loading} error={error} />
+          )}
+          <div className="sr-only" aria-live="polite">
+            {tooltipNode
+              ? `${tooltipNode.name}, ${tooltipNode.city}, ${tooltipNode.country}. ${tooltipNode.degree} direct connections.`
+              : ""}
+          </div>
+        </section>
+      </main>
+    </div>
+  );
 }
 
 export default App;
