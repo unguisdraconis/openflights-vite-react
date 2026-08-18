@@ -14,6 +14,15 @@ const COLORS = {
   white: new THREE.Color("#f3f4f6"),
 };
 const fmt = new Intl.NumberFormat("en-US");
+// Radius of the globe mesh. Airports sit just above it (see latLonVector
+// calls), and hover picking uses it to cull the occluded far hemisphere.
+const GLOBE_RADIUS = 1;
+// Airports that fail the country/degree filters stay on screen as geographic
+// context rather than vanishing. This has to clear the point shader's
+// `a < .015` discard by enough to survive the sprite's edge falloff —
+// too low and whole regions of the map read as empty, which is what a
+// hemisphere of low-degree airports looks like under a hub-degree filter.
+const DIMMED_ALPHA = 0.25;
 const reducedMotion =
   typeof window !== "undefined" && typeof window.matchMedia === "function"
     ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -627,6 +636,12 @@ function Sidebar({
           </a>
         </div>
         <p className="data-source">© 2026 Jeremiah King</p>
+        <p className="data-source">
+          Data from{""}
+          <a href="https://openflights.org" target="_blank" rel="noreferrer">
+            OpenFlights.org
+          </a>
+        </p>
       </footer>
     </aside>
   );
@@ -691,14 +706,18 @@ function GlobeScene({
     const globeGroup = new THREE.Group();
     scene.add(globeGroup);
     const globe = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 64, 48),
+      new THREE.SphereGeometry(GLOBE_RADIUS, 64, 48),
       new THREE.MeshPhongMaterial({
         color: 0x101a26,
         emissive: 0x07101a,
         specular: 0x29445c,
         shininess: 22,
-        transparent: true,
-        opacity: 0.985,
+        // The globe must stay opaque. As a transparent material it joined the
+        // transparency queue, where it is blended and ordered against the node
+        // sprites instead of being laid down first as a depth-writing occluder
+        // — which let it paint over the sprites inside its own silhouette,
+        // leaving only the ring where they project past the limb.
+        transparent: false,
       }),
     );
     globeGroup.add(globe);
@@ -927,26 +946,31 @@ function GlobeScene({
         nodePositions.set(v.toArray(), i * 3);
         const passesCountry = !opts.country || n.country === opts.country;
         const passesDegree = n.degree >= opts.minDegree;
+        const passesFilters = passesCountry && passesDegree;
         const { color, pixelSize, isSelected, connected } = nodeStyle(
           n,
           selectedNode,
         );
         let alpha = isSelected
           ? 1
-          : passesCountry && passesDegree
+          : passesFilters
             ? 0.9
             : connected
               ? 0.75
-              : 0.075;
+              : DIMMED_ALPHA;
         const isHero = n === heroNode;
         if (isHero) alpha = 0; // hero node is drawn as a mesh, not a sprite
         nodeColors.set(color.toArray(), i * 3);
         nodeAlpha[i] = alpha;
         nodeSizes[i] = pixelSize;
-        // keep the hero node pickable via the quadtree even though its
-        // sprite is hidden — its position in the shared buffer is still
-        // updated above, so hover/click resolve to the same airport.
-        if (alpha > 0.18 || isHero) visibleNodeIndices.push(i);
+        // Dimmed nodes are context, not hover targets, so picking keys off the
+        // filters themselves rather than off an alpha threshold — otherwise
+        // brightening DIMMED_ALPHA would silently make them pickable. The hero
+        // node stays pickable even though its sprite is hidden: it's drawn as a
+        // mesh, and its position in the shared buffer is still updated above,
+        // so hover/click resolve to the same airport.
+        if (isSelected || connected || passesFilters || isHero)
+          visibleNodeIndices.push(i);
       });
       nodesGeo.attributes.position.needsUpdate = true;
       nodesGeo.attributes.color.needsUpdate = true;
@@ -966,12 +990,20 @@ function GlobeScene({
       projected = [];
       const rect = renderer.domElement.getBoundingClientRect(),
         attr = nodesGeo.attributes.position;
+      const world = new THREE.Vector3();
       for (const i of visibleNodeIndices) {
-        const v = new THREE.Vector3(
-          attr.getX(i),
-          attr.getY(i),
-          attr.getZ(i),
-        ).project(camera);
+        world.set(attr.getX(i), attr.getY(i), attr.getZ(i));
+        // In globe view the sphere occludes the far hemisphere, but projecting
+        // to screen space doesn't know that: back-side airports land on top of
+        // the visible disc and steal the hover/click. Cull them with the
+        // horizon-plane test — for a sphere of radius R at the origin, a point
+        // is on the camera-facing side iff dot(p, cameraPosition) >= R².
+        if (
+          currentView === "globe" &&
+          world.dot(camera.position) < GLOBE_RADIUS * GLOBE_RADIUS
+        )
+          continue;
+        const v = world.project(camera); // safe to mutate: reset each iteration
         if (v.z < -1 || v.z > 1) continue;
         const x = (v.x * 0.5 + 0.5) * rect.width,
           y = (-v.y * 0.5 + 0.5) * rect.height;
@@ -1039,6 +1071,11 @@ function GlobeScene({
     renderer.domElement.addEventListener("pointerdown", pointerDownFn);
     renderer.domElement.addEventListener("pointerup", pointerUpFn);
     renderer.domElement.addEventListener("pointerleave", () => {
+      if (pointerFrame) {
+        cancelAnimationFrame(pointerFrame);
+        pointerFrame = 0;
+      }
+      hoverIndex = null;
       if (!selectedRef.current) onHover(null, null);
     });
 
@@ -1107,6 +1144,7 @@ function GlobeScene({
     const ro = new ResizeObserver(resize);
     ro.observe(host);
     resize();
+
     const animate = (now) => {
       if (disposed) return;
       const dt = now - lastFrame;
